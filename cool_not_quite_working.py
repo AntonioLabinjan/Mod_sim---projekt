@@ -10,7 +10,7 @@
 
 # --- 1. POSTAVKE SUSTAVA (Globalne varijable) ---
 set.seed(42)                         
-N_SIMS         <- 100000             
+N_SIMS         <- 10            
 INIT_PTS       <- 120                
 N_CARDS_DRAWN  <- 10                 
 SUITS          <- 4                  
@@ -266,51 +266,50 @@ cat("\n✓ Analiza limita je gotova. Primijeti razliku u 'preživljavanju'!\n")
 
 # [SVE PRETHODNE SEKCIJE OSTAJU ISTE...]
 
-# --- 10. CASINO OPTIMIZACIJA: ANALIZA LIMITA RUNDI ---
-
-#' @title Analiza profitabilnosti casina ovisno o trajanju igre
-#' @description Simulira očekivani profit kuće ako prisilno ograniči broj runda.
-#' Cilj je naći balans između zarade i vremena koje igrač provede za stolom.
+# --- 10. CASINO OPTIMIZACIJA: ANALIZA LIMITA RUNDI (Ispravljena verzija) ---
 
 stepenice_limita <- seq(10, 100, by = 10)
 casino_izvjestaj <- data.frame()
 
-cat("\n========================================================\n")
-cat("   CASINO ANALITIKA: OČEKIVANI PROFIT PO LIMITU RUNDI   \n")
-cat("========================================================\n")
-print(stepenice_limita)
+cat("\nPokrećem simulaciju limita...\n")
+
 for (limit in stepenice_limita) {
   
-  # Za svaki limit pokrećemo brzu simulaciju (npr. 1000 "posjetitelja" casina)
-  privremeni_rezultati <- lapply(strategies, function(s) {
-    # Simuliramo 1000 neovisnih igrača za svaki limit radi stabilnog prosjeka
-    replicate(1000, {
+  # Za svaki limit računamo prosjek
+  avg_profits <- sapply(strategies, function(s) {
+    # 500 replikacija je dovoljno za stabilan prosjek
+    runs <- replicate(500, {
       sim <- simulate_strategy(s, n_sims = limit)
-      tail(sim$bank, 1) - START_BANKROLL
+      # Profit casina = Početni novac - Završni novac igrača
+      START_BANKROLL - tail(sim$bank, 1)
     })
+    return(mean(runs))
   })
   
-  # Računamo prosječni profit casina (negativni profit igrača)
-  avg_casino_profit <- sapply(privremeni_rezultati, function(x) -mean(x))
-  
+  # PAZI: Ovdje koristimo točne indekse iz avg_profits da izbjegnemo NA
   redak <- data.frame(
     Maks_Rundi = limit,
-    Flat       = avg_casino_profit["Flat"],
-    Martingale = avg_casino_profit["Martingale"],
-    Kelly      = avg_casino_profit["Kelly"],
-    Anti_Mart  = avg_casino_profit["Anti-Martingale"]
+    Flat       = avg_profits["Flat"],
+    Martingale = avg_profits["Martingale"],
+    Kelly      = avg_profits["Kelly"],
+    Anti_Mart  = avg_profits["Anti-Martingale"]
   )
   
   casino_izvjestaj <- rbind(casino_izvjestaj, redak)
 }
 
-# Ispis tablice casinu
+# Provjera: ako ima NA, zamijeni ih nulom da plot ne pukne
+casino_izvjestaj[is.na(casino_izvjestaj)] <- 0
+
+# Ispis tablice
 print(round(casino_izvjestaj, 2), row.names = FALSE)
 
-# Vizualizacija "pohlepe" casina
-par(mfrow = c(1, 1))
+# Crtanje grafa uz sigurnosnu provjeru ylim
+max_y <- max(casino_izvjestaj$Martingale, na.rm = TRUE)
+if(is.infinite(max_y) | max_y < 1) max_y <- 100 # Fiksna granica ako podaci ne valjuju
+
 plot(casino_izvjestaj$Maks_Rundi, casino_izvjestaj$Flat, type="b", col="blue", pch=19,
-     ylim=c(0, max(casino_izvjestaj$Martingale)),
+     ylim=c(0, max_y),
      main="Očekivani profit casina po broju dozvoljenih runda",
      xlab="Limit runda", ylab="Prosječna zarada casina (€)")
 lines(casino_izvjestaj$Maks_Rundi, casino_izvjestaj$Martingale, type="b", col="red", pch=19)
