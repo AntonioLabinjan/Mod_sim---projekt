@@ -31,38 +31,38 @@ simulate_strategy <- function(
   net_profit <- numeric(n_sims)
   hits_vec   <- numeric(n_sims)
   bets_vec   <- numeric(n_sims)
-
+  
   bankroll[1] <- start_bankroll
   current_bet <- flat_bet
-
+  
   for (i in seq_len(n_sims)) {
     bet <- switch(strategy_name,
                   "Flat"            = flat_bet,
                   "Martingale"      = current_bet,
                   "Anti-Martingale" = current_bet,
                   "Kelly"           = max(1, bankroll[i] * kelly_fraction))
-
+    
     bet <- min(bet, bankroll[i], max_bet)
     bets_vec[i] <- bet
-
+    
     if (bankroll[i] <= 0) {
       bankroll[(i + 1):(n_sims + 1)] <- 0
       break
     }
-
+    
     res <- play_round(bet, suits, cards_per_suit, n_cards_drawn, init_pts)
-
+    
     bankroll[i + 1] <- bankroll[i] + res$profit
     net_profit[i]   <- res$profit
     hits_vec[i]     <- res$hits
-
+    
     if (strategy_name == "Martingale") {
       current_bet <- if (res$profit < 0) min(current_bet * 2, max_bet) else flat_bet
     } else if (strategy_name == "Anti-Martingale") {
       current_bet <- if (res$profit > 0) min(current_bet * 2, max_bet) else flat_bet
     }
   }
-
+  
   list(name = strategy_name, bank = bankroll, prof = net_profit,
        hits = hits_vec, bets = bets_vec)
 }
@@ -105,6 +105,19 @@ STRAT_COLORS <- c(
   "Anti-Martingale" = "#ffa657",
   "Kelly"           = "#3fb950"
 )
+
+# ── TOOLTIP HELPER ──────────────────────────────────────────
+
+# Returns an HTML snippet: label text + ⓘ icon with a tooltip popup
+tip <- function(label, text) {
+  HTML(paste0(
+    label,
+    '<span class="tip-wrap">',
+    '<span class="tip-icon">&#9432;</span>',
+    '<span class="tip-box">', text, '</span>',
+    '</span>'
+  ))
+}
 
 # ── UI ──────────────────────────────────────────────────────
 
@@ -383,128 +396,237 @@ ui <- fluidPage(
       .risk-safe    { background: rgba(63,185,80,.15);  color: #3fb950; }
       .risk-caution { background: rgba(255,166,87,.15); color: #ffa657; }
       .risk-danger  { background: rgba(255,123,114,.15); color: #ff7b72; }
+
+      /* ─── TOOLTIP ─── */
+      .tip-wrap {
+        position: relative;
+        display: inline-block;
+        margin-left: 5px;
+        vertical-align: middle;
+        line-height: 1;
+      }
+      .tip-icon {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 14px;
+        height: 14px;
+        font-size: 12px;
+        color: #8b949e;
+        cursor: help;
+        border-radius: 50%;
+        transition: color .15s;
+        font-style: normal;
+        user-select: none;
+      }
+      .tip-icon:hover { color: #58a6ff; }
+      .tip-box {
+        visibility: hidden;
+        opacity: 0;
+        pointer-events: none;
+        position: absolute;
+        left: 50%;
+        bottom: calc(100% + 8px);
+        transform: translateX(-50%);
+        width: 220px;
+        background: #1c2128;
+        border: 1px solid #388bfd;
+        border-radius: 8px;
+        padding: 9px 12px;
+        font-size: 11px;
+        font-family: 'Inter', sans-serif;
+        font-weight: 400;
+        color: #c9d1d9;
+        line-height: 1.6;
+        text-transform: none;
+        letter-spacing: 0;
+        box-shadow: 0 8px 24px rgba(0,0,0,.5);
+        z-index: 10000;
+        transition: opacity .15s, visibility .15s;
+        white-space: normal;
+      }
+      /* arrow */
+      .tip-box::after {
+        content: '';
+        position: absolute;
+        top: 100%;
+        left: 50%;
+        transform: translateX(-50%);
+        border: 6px solid transparent;
+        border-top-color: #388bfd;
+      }
+      .tip-wrap:hover .tip-box {
+        visibility: visible;
+        opacity: 1;
+      }
+      /* flip down if near top of page */
+      .tip-wrap.tip-down .tip-box {
+        bottom: auto;
+        top: calc(100% + 8px);
+      }
+      .tip-wrap.tip-down .tip-box::after {
+        top: auto;
+        bottom: 100%;
+        border-top-color: transparent;
+        border-bottom-color: #388bfd;
+      }
     "))
   ),
-
+  
   # Loading overlay
   div(id = "loading_overlay",
-    div(class = "spinner")
+      div(class = "spinner")
   ),
-
+  
   # Header
   div(class = "app-header",
-    div(class = "suit-icons", "♠♥♦♣"),
-    div(
-      h1("Briškola Casino Simulator"),
-      div(class = "subtitle", "Monte Carlo simulacija strategija klađenja")
-    ),
-    div(class = "fipu-badge", "MIS · FIPU Pula")
+      div(class = "suit-icons", "♠♥♦♣"),
+      div(
+        h1("Briškola Casino Simulator"),
+        div(class = "subtitle", "Monte Carlo simulacija strategija klađenja")
+      ),
+      div(class = "fipu-badge", "MIS · FIPU Pula")
   ),
-
+  
   # Main layout
   div(class = "main-layout",
-
-    # ── SIDEBAR ──
-    div(class = "sidebar-panel",
-
-      div(class = "section-label", "Parametri špila"),
-
-      sliderInput("suits", "Broj boja (aduta)", 2, 6, 4, 1),
-      sliderInput("cards_per_suit", "Karata po boji", 4, 13, 10, 1),
-      sliderInput("n_cards_drawn", "Karata u ruci", 5, 15, 10, 1),
-      numericInput("init_pts", "Početni bodovi", 120, 50, 300, 10),
-
-      div(class = "section-label", "Parametri simulacije"),
-
-      numericInput("n_sims",        "Broj rundi",         5000,  100,  100000, 100),
-      numericInput("start_bankroll","Početni bankroll (€)", 10000, 100, 500000, 100),
-
-      div(class = "section-label", "Parametri strategija"),
-
-      numericInput("flat_bet",        "Osnovni ulog — Flat/Mart. (€)", 10,   1,   1000, 1),
-      numericInput("kelly_fraction",  "Kelly udio bankrolla",           0.05, 0.01, 0.5, 0.01),
-      numericInput("max_bet",         "Maksimalni ulog (€)",            500,  10,   10000, 50),
-
-      div(class = "section-label", "Odabir strategija"),
-
-      div(class = "strat-check",
-        checkboxGroupInput("strategies", NULL,
-          choices  = c("Flat", "Martingale", "Anti-Martingale", "Kelly"),
-          selected = c("Flat", "Martingale", "Anti-Martingale", "Kelly")
-        )
+      
+      # ── SIDEBAR ──
+      div(class = "sidebar-panel",
+          
+          div(class = "section-label", "Parametri špila"),
+          
+          sliderInput("suits",
+                      tip("Broj boja (aduta)",
+                          "Broj različitih boja u špilu (npr. 4 = karo, herc, pik, tref). Adut se nasumično odabire na početku svake runde — karte te boje donose bodove."),
+                      2, 6, 4, 1),
+          
+          sliderInput("cards_per_suit",
+                      tip("Karata po boji",
+                          "Koliko karata ima svaka boja. Ukupan broj karata u špilu = boje × karte po boji. Više karata po boji povećava vjerojatnost pogotka aduta."),
+                      4, 13, 10, 1),
+          
+          sliderInput("n_cards_drawn",
+                      tip("Karata u ruci",
+                          "Koliko karata igrač vuče iz špila po rundi. Više karata = više mogućih aduta, ali i više promašaja ako adut nije čest."),
+                      5, 15, 10, 1),
+          
+          numericInput("init_pts",
+                       tip("Početni bodovi",
+                           "Bodovni kapital na početku svake runde. Svaki pogodak aduta dodaje +10 bodova, svaki promašaj oduzima −10. Multiplikator uloga = završni_bodovi / početni_bodovi."),
+                       120, 50, 300, 10),
+          
+          div(class = "section-label", "Parametri simulacije"),
+          
+          numericInput("n_sims",
+                       tip("Broj rundi",
+                           "Ukupan broj odigranih rundi u jednoj simulaciji. Više rundi daje pouzdaniju procjenu, ali usporava izvođenje. Preporučeno: 1 000 – 20 000."),
+                       5000, 100, 100000, 100),
+          
+          numericInput("start_bankroll",
+                       tip("Početni bankroll (€)",
+                           "Iznos novca s kojim igrač kreće. Simulacija staje ranije ako bankroll padne na 0 (bankrot). Služi kao referentna linija na grafu kretanja."),
+                       10000, 100, 500000, 100),
+          
+          div(class = "section-label", "Parametri strategija"),
+          
+          numericInput("flat_bet",
+                       tip("Osnovni ulog — Flat/Mart. (€)",
+                           "Fiksni ulog koji koristi Flat strategija svake runde. Martingale i Anti-Martingale kreću s ovim iznosom i udvostručuju/resetiraju na osnovu rezultata prethodne runde."),
+                       10, 1, 1000, 1),
+          
+          numericInput("kelly_fraction",
+                       tip("Kelly udio bankrolla",
+                           "Udio trenutnog bankrolla koji Kelly strategija ulaže po rundi. Npr. 0.05 = 5% bankrolla. Manji udio = manje rizično, sporiji rast. Matematički optimalan udio ovisi o prednosti igre."),
+                       0.05, 0.01, 0.5, 0.01),
+          
+          numericInput("max_bet",
+                       tip("Maksimalni ulog (€)",
+                           "Gornja granica uloga za sve strategije. Sprječava Martingale od eksponencijalnog rasta uloga. Simulira stvarna kasinška ograničenja stola."),
+                       500, 10, 10000, 50),
+          
+          div(class = "section-label", "Odabir strategija"),
+          
+          div(class = "strat-check",
+              checkboxGroupInput("strategies",
+                                 tip(NULL,
+                                     "<b>Flat</b>: uvijek isti ulog.<br><b>Martingale</b>: udvostručuje ulog nakon gubitka, resetira nakon dobitka.<br><b>Anti-Martingale</b>: udvostručuje ulog nakon dobitka, resetira nakon gubitka.<br><b>Kelly</b>: ulaže fiksni postotak trenutnog bankrolla."),
+                                 choices  = c("Flat", "Martingale", "Anti-Martingale", "Kelly"),
+                                 selected = c("Flat", "Martingale", "Anti-Martingale", "Kelly")
+              )
+          ),
+          
+          actionButton("run_btn", "▶  POKRENUTI SIMULACIJU")
       ),
-
-      actionButton("run_btn", "▶  POKRENUTI SIMULACIJU")
-    ),
-
-    # ── CONTENT ──
-    div(class = "content-panel",
-
-      # KPI row
-      uiOutput("kpi_cards"),
-
-      # Tabs
-      tabsetPanel(id = "tabs",
-
-        tabPanel("Kretanje bankrolla",
-          div(class = "plot-card",
-            h4("Trajektorija bankrolla"),
-            div(class = "plot-desc", "Kretanje kapitala po rundi za sve odabrane strategije"),
-            plotOutput("plot_bankroll", height = "380px")
-          )
-        ),
-
-        tabPanel("Distribucija profita",
-          div(class = "plot-card",
-            h4("Distribucija neto profita po rundi"),
-            div(class = "plot-desc", "Gustoća raspodjele dobitaka/gubitaka — simulirana vs teorijska"),
-            plotOutput("plot_dist", height = "380px")
-          )
-        ),
-
-        tabPanel("Analiza špila",
-          div(class = "plot-card",
-            h4("Distribucija pogodaka aduta"),
-            div(class = "plot-desc",
-                "Simulirana frekvencija pogodaka vs teorijska hipergeometrijska distribucija (crvena)"),
-            plotOutput("plot_hyper", height = "360px")
-          )
-        ),
-
-        tabPanel("Statistički sažetak",
-          uiOutput("summary_table")
-        ),
-
-        tabPanel("Casino optimizacija",
-          div(class = "info-box",
-            HTML("<strong>Analiza limita rundi:</strong> Koliko prosječno casino zarađuje ovisno
+      
+      # ── CONTENT ──
+      div(class = "content-panel",
+          
+          # KPI row
+          uiOutput("kpi_cards"),
+          
+          # Tabs
+          tabsetPanel(id = "tabs",
+                      
+                      tabPanel("Kretanje bankrolla",
+                               div(class = "plot-card",
+                                   h4("Trajektorija bankrolla"),
+                                   div(class = "plot-desc", "Kretanje kapitala po rundi za sve odabrane strategije"),
+                                   plotOutput("plot_bankroll", height = "380px")
+                               )
+                      ),
+                      
+                      tabPanel("Distribucija profita",
+                               div(class = "plot-card",
+                                   h4("Distribucija neto profita po rundi"),
+                                   div(class = "plot-desc", "Gustoća raspodjele dobitaka/gubitaka — simulirana vs teorijska"),
+                                   plotOutput("plot_dist", height = "380px")
+                               )
+                      ),
+                      
+                      tabPanel("Analiza špila",
+                               div(class = "plot-card",
+                                   h4("Distribucija pogodaka aduta"),
+                                   div(class = "plot-desc",
+                                       "Simulirana frekvencija pogodaka vs teorijska hipergeometrijska distribucija (crvena)"),
+                                   plotOutput("plot_hyper", height = "360px")
+                               )
+                      ),
+                      
+                      tabPanel("Statistički sažetak",
+                               uiOutput("summary_table")
+                      ),
+                      
+                      tabPanel("Casino optimizacija",
+                               div(class = "info-box",
+                                   HTML("<strong>Analiza limita rundi:</strong> Koliko prosječno casino zarađuje ovisno
                   o tome koliko rundi dozvoli igraču. Pokreće 200 replikacija po koraku.")
-          ),
-          div(class = "plot-card",
-            h4("Očekivani profit casina vs. limit rundi"),
-            plotOutput("plot_casino", height = "360px")
-          ),
-          uiOutput("casino_table")
-        )
+                               ),
+                               div(class = "plot-card",
+                                   h4("Očekivani profit casina vs. limit rundi"),
+                                   plotOutput("plot_casino", height = "360px")
+                               ),
+                               uiOutput("casino_table")
+                      )
+          )
       )
-    )
   )
 )
 
 # ── SERVER ──────────────────────────────────────────────────
 
 server <- function(input, output, session) {
-
+  
   # Reactive: run simulation on button click
   sim_results <- eventReactive(input$run_btn, {
     req(length(input$strategies) > 0)
-
+    
     shinyjs::runjs("document.getElementById('loading_overlay').style.display='flex';")
     on.exit(shinyjs::runjs("document.getElementById('loading_overlay').style.display='none';"))
-
+    
     set.seed(42)
     strats <- input$strategies
-
+    
     results <- lapply(strats, function(s) {
       simulate_strategy(
         strategy_name   = s,
@@ -522,68 +644,68 @@ server <- function(input, output, session) {
     names(results) <- strats
     results
   }, ignoreNULL = FALSE)
-
+  
   # RTP (reactive on deck params)
   rtp <- reactive({
     calc_rtp(input$suits, input$cards_per_suit, input$n_cards_drawn, input$init_pts)
   })
-
+  
   # ── KPI CARDS ──
   output$kpi_cards <- renderUI({
     res <- sim_results()
     rtp_val <- rtp()
     house_edge <- 100 - rtp_val
-
+    
     strats <- names(res)
     final_banks <- sapply(strats, function(s) tail(res[[s]]$bank[res[[s]]$bank > 0], 1))
     best_strat  <- strats[which.max(final_banks)]
     worst_strat <- strats[which.min(final_banks)]
-
+    
     # Bankruptcy check
     bankrupt_info <- sapply(strats, function(s) {
       idx <- which(res[[s]]$bank <= 0)[1]
       if (!is.na(idx)) idx - 1 else NA
     })
     survived <- sum(is.na(bankrupt_info))
-
+    
     div(class = "kpi-row",
-      div(class = "kpi-card grey",
-        div(class = "kpi-label", "Teorijski RTP"),
-        div(class = "kpi-value", sprintf("%.1f%%", rtp_val)),
-        div(class = "kpi-sub", sprintf("House Edge: %.1f%%", house_edge))
-      ),
-      div(class = "kpi-card blue",
-        div(class = "kpi-label", "Rundi simulirano"),
-        div(class = "kpi-value", formatC(input$n_sims, format = "d", big.mark = ".")),
-        div(class = "kpi-sub", sprintf("%d strategija", length(strats)))
-      ),
-      div(class = "kpi-card green",
-        div(class = "kpi-label", "Preživjele strategije"),
-        div(class = "kpi-value", sprintf("%d / %d", survived, length(strats))),
-        div(class = "kpi-sub", if (survived == length(strats)) "Sve prežive" else "Bankrot zabilježen")
-      ),
-      div(class = "kpi-card orange",
-        div(class = "kpi-label", "Početni bankroll"),
-        div(class = "kpi-value", sprintf("%s€", formatC(input$start_bankroll, format = "d", big.mark = "."))),
-        div(class = "kpi-sub", sprintf("Max ulog: %d€", as.integer(input$max_bet)))
-      )
+        div(class = "kpi-card grey",
+            div(class = "kpi-label", "Teorijski RTP"),
+            div(class = "kpi-value", sprintf("%.1f%%", rtp_val)),
+            div(class = "kpi-sub", sprintf("House Edge: %.1f%%", house_edge))
+        ),
+        div(class = "kpi-card blue",
+            div(class = "kpi-label", "Rundi simulirano"),
+            div(class = "kpi-value", formatC(input$n_sims, format = "d", big.mark = ".")),
+            div(class = "kpi-sub", sprintf("%d strategija", length(strats)))
+        ),
+        div(class = "kpi-card green",
+            div(class = "kpi-label", "Preživjele strategije"),
+            div(class = "kpi-value", sprintf("%d / %d", survived, length(strats))),
+            div(class = "kpi-sub", if (survived == length(strats)) "Sve prežive" else "Bankrot zabilježen")
+        ),
+        div(class = "kpi-card orange",
+            div(class = "kpi-label", "Početni bankroll"),
+            div(class = "kpi-value", sprintf("%s€", formatC(input$start_bankroll, format = "d", big.mark = "."))),
+            div(class = "kpi-sub", sprintf("Max ulog: %d€", as.integer(input$max_bet)))
+        )
     )
   })
-
+  
   # ── BANKROLL PLOT ──
   output$plot_bankroll <- renderPlot({
     res <- sim_results()
     strats <- names(res)
-
+    
     max_rounds <- max(sapply(strats, function(s) length(res[[s]]$bank)))
     plot_n <- min(max_rounds, 2000)  # cap for performance
-
+    
     df <- do.call(rbind, lapply(strats, function(s) {
       bank <- res[[s]]$bank[1:plot_n]
       data.frame(Runda = seq_along(bank), Bankroll = bank, Strategija = s,
                  stringsAsFactors = FALSE)
     }))
-
+    
     ggplot(df, aes(x = Runda, y = Bankroll, colour = Strategija)) +
       geom_line(linewidth = 0.7, alpha = 0.9) +
       geom_hline(yintercept = input$start_bankroll, linetype = "dashed",
@@ -594,17 +716,17 @@ server <- function(input, output, session) {
            subtitle = sprintf("Prikazano prvih %s rundi", formatC(plot_n, format = "d", big.mark = "."))) +
       casino_theme()
   }, bg = "#0d1117")
-
+  
   # ── PROFIT DISTRIBUTION ──
   output$plot_dist <- renderPlot({
     res <- sim_results()
     strats <- names(res)
-
+    
     df <- do.call(rbind, lapply(strats, function(s) {
       data.frame(Profit = res[[s]]$prof, Strategija = s, stringsAsFactors = FALSE)
     }))
     df <- df[df$Profit != 0, ]
-
+    
     ggplot(df, aes(x = Profit, fill = Strategija)) +
       geom_density(alpha = 0.45, colour = NA) +
       geom_vline(xintercept = 0, colour = "#8b949e", linetype = "dashed", linewidth = 0.7) +
@@ -614,27 +736,27 @@ server <- function(input, output, session) {
       casino_theme() +
       theme(legend.position = "none")
   }, bg = "#0d1117")
-
+  
   # ── HYPERGEOMETRIC PLOT ──
   output$plot_hyper <- renderPlot({
     res <- sim_results()
-
+    
     # Use Flat strategy hits for model validation
     hits_flat <- res[[1]]$hits
     hits_flat <- hits_flat[hits_flat > 0 | TRUE]
-
+    
     n  <- input$n_cards_drawn
     K  <- input$cards_per_suit
     N  <- input$suits * input$cards_per_suit
     possible_hits <- 0:min(n, K)
-
+    
     sim_freq <- table(factor(hits_flat, levels = possible_hits)) / length(hits_flat)
     theory   <- dhyper(possible_hits, K, N - K, n)
-
+    
     df_sim    <- data.frame(Pogoci = possible_hits, Vjerojatnoca = as.numeric(sim_freq), Tip = "Simulacija")
     df_theory <- data.frame(Pogoci = possible_hits, Vjerojatnoca = theory, Tip = "Teorija (Hipergeometrijska)")
     df_all    <- rbind(df_sim, df_theory)
-
+    
     ggplot() +
       geom_col(data = df_all[df_all$Tip == "Simulacija", ],
                aes(x = Pogoci, y = Vjerojatnoca), fill = "#58a6ff", alpha = 0.7, width = 0.6) +
@@ -647,12 +769,12 @@ server <- function(input, output, session) {
            subtitle = sprintf("N=%d, K=%d, n=%d | Strategija: %s", N, K, n, names(res)[1])) +
       casino_theme()
   }, bg = "#0d1117")
-
+  
   # ── SUMMARY TABLE ──
   output$summary_table <- renderUI({
     res <- sim_results()
     strats <- names(res)
-
+    
     rows <- lapply(strats, function(s) {
       bank <- res[[s]]$bank
       prof <- res[[s]]$prof[res[[s]]$prof != 0]
@@ -664,11 +786,11 @@ server <- function(input, output, session) {
       max_bank <- max(bank)
       min_bank <- min(bank[bank > 0])
       avg_profit <- mean(prof)
-
+      
       col_pnl <- if (pnl > 0) "val-pos" else "val-neg"
       col_avg <- if (avg_profit > 0) "val-pos" else "val-neg"
       col_dot  <- sprintf("style='color:%s;font-weight:700'", STRAT_COLORS[s])
-
+      
       tags$tr(
         tags$td(span(style = sprintf("color:%s;font-weight:700", STRAT_COLORS[s]), s)),
         tags$td(class = col_pnl, sprintf("%+.0f€", pnl)),
@@ -678,37 +800,37 @@ server <- function(input, output, session) {
         tags$td(bankrupt_txt)
       )
     })
-
+    
     tagList(
       div(class = "plot-card",
-        h4("Sažetak po strategijama"),
-        div(class = "plot-desc",
-            sprintf("Rezultati simulacije — %s rundi, bankroll %s€",
-                    formatC(input$n_sims, format="d", big.mark="."),
-                    formatC(input$start_bankroll, format="d", big.mark="."))),
-        tags$table(class = "summary-table",
-          tags$thead(tags$tr(
-            tags$th("Strategija"), tags$th("Ukupni PnL"),
-            tags$th("Prosj. profit/rundi"), tags$th("Maks. bankroll"),
-            tags$th("Min. bankroll"), tags$th("Bankrot (runda)")
-          )),
-          tags$tbody(rows)
-        )
+          h4("Sažetak po strategijama"),
+          div(class = "plot-desc",
+              sprintf("Rezultati simulacije — %s rundi, bankroll %s€",
+                      formatC(input$n_sims, format="d", big.mark="."),
+                      formatC(input$start_bankroll, format="d", big.mark="."))),
+          tags$table(class = "summary-table",
+                     tags$thead(tags$tr(
+                       tags$th("Strategija"), tags$th("Ukupni PnL"),
+                       tags$th("Prosj. profit/rundi"), tags$th("Maks. bankroll"),
+                       tags$th("Min. bankroll"), tags$th("Bankrot (runda)")
+                     )),
+                     tags$tbody(rows)
+          )
       )
     )
   })
-
+  
   # ── CASINO OPTIMIZACIJA ──
   output$plot_casino <- renderPlot({
     req(input$run_btn)
     set.seed(99)
-
+    
     limit_steps  <- seq(10, 100, by = 10)
     n_reps       <- 200
     strats_opt   <- c("Flat", "Martingale", "Kelly")
-
+    
     casino_df <- data.frame()
-
+    
     for (lim in limit_steps) {
       avg_profits <- sapply(strats_opt, function(s) {
         runs <- replicate(n_reps, {
@@ -734,14 +856,14 @@ server <- function(input, output, session) {
         Kelly      = avg_profits["Kelly"]
       ))
     }
-
+    
     df_long <- reshape(casino_df,
-      varying   = c("Flat", "Martingale", "Kelly"),
-      v.names   = "Profit",
-      timevar   = "Strategija",
-      times     = c("Flat", "Martingale", "Kelly"),
-      direction = "long")
-
+                       varying   = c("Flat", "Martingale", "Kelly"),
+                       v.names   = "Profit",
+                       timevar   = "Strategija",
+                       times     = c("Flat", "Martingale", "Kelly"),
+                       direction = "long")
+    
     ggplot(df_long, aes(x = Limit, y = Profit, colour = Strategija, group = Strategija)) +
       geom_line(linewidth = 1.2) +
       geom_point(size = 2.5) +
@@ -752,14 +874,14 @@ server <- function(input, output, session) {
                               formatC(input$start_bankroll, format="d", big.mark="."))) +
       casino_theme()
   }, bg = "#0d1117")
-
+  
   output$casino_table <- renderUI({
     req(input$run_btn)
     set.seed(99)
-
+    
     limit_steps <- seq(10, 100, by = 10)
     n_reps      <- 200
-
+    
     casino_rows <- lapply(limit_steps, function(lim) {
       avg_profits <- sapply(c("Flat","Martingale","Kelly"), function(s) {
         runs <- replicate(n_reps, {
@@ -785,18 +907,18 @@ server <- function(input, output, session) {
         tags$td(sprintf("%.1f€", avg_profits["Kelly"]))
       )
     })
-
+    
     div(class = "plot-card",
-      h4("Tablica: Prosječna zarada casina"),
-      tags$table(class = "summary-table",
-        tags$thead(tags$tr(
-          tags$th("Limit rundi"),
-          tags$th(style = sprintf("color:%s", STRAT_COLORS["Flat"]), "Flat"),
-          tags$th(style = sprintf("color:%s", STRAT_COLORS["Martingale"]), "Martingale"),
-          tags$th(style = sprintf("color:%s", STRAT_COLORS["Kelly"]), "Kelly")
-        )),
-        tags$tbody(casino_rows)
-      )
+        h4("Tablica: Prosječna zarada casina"),
+        tags$table(class = "summary-table",
+                   tags$thead(tags$tr(
+                     tags$th("Limit rundi"),
+                     tags$th(style = sprintf("color:%s", STRAT_COLORS["Flat"]), "Flat"),
+                     tags$th(style = sprintf("color:%s", STRAT_COLORS["Martingale"]), "Martingale"),
+                     tags$th(style = sprintf("color:%s", STRAT_COLORS["Kelly"]), "Kelly")
+                   )),
+                   tags$tbody(casino_rows)
+        )
     )
   })
 }
