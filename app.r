@@ -1,13 +1,7 @@
-# ============================================================
-#  MODELIRANJE I SIMULACIJE — Briškolaškai Casino Simulator
-#  Shiny Web Application
-# ============================================================
-
 library(shiny)
 library(shinyjs)
 library(ggplot2)
 
-# ── GAME LOGIC ──────────────────────────────────────────────
 
 play_round <- function(bet, suits, cards_per_suit, n_cards_drawn, init_pts) {
   deck_suits    <- rep(1:suits, each = cards_per_suit)
@@ -78,7 +72,6 @@ calc_rtp <- function(suits, cards_per_suit, n_cards_drawn, init_pts) {
   exp_mult * 100
 }
 
-# ── THEME ───────────────────────────────────────────────────
 
 casino_theme <- function() {
   theme_minimal(base_size = 13) +
@@ -106,9 +99,6 @@ STRAT_COLORS <- c(
   "Kelly"           = "#3fb950"
 )
 
-# ── TOOLTIP HELPER ──────────────────────────────────────────
-
-# Returns an HTML snippet: label text + ⓘ icon with a tooltip popup
 tip <- function(label, text) {
   HTML(paste0(
     label,
@@ -119,7 +109,6 @@ tip <- function(label, text) {
   ))
 }
 
-# ── UI ──────────────────────────────────────────────────────
 
 ui <- fluidPage(
   useShinyjs(),
@@ -488,10 +477,8 @@ ui <- fluidPage(
       div(class = "fipu-badge", "MIS · FIPU Pula")
   ),
   
-  # Main layout
   div(class = "main-layout",
       
-      # ── SIDEBAR ──
       div(class = "sidebar-panel",
           
           div(class = "section-label", "Parametri špila"),
@@ -613,11 +600,9 @@ ui <- fluidPage(
   )
 )
 
-# ── SERVER ──────────────────────────────────────────────────
 
 server <- function(input, output, session) {
   
-  # Reactive: run simulation on button click
   sim_results <- eventReactive(input$run_btn, {
     req(length(input$strategies) > 0)
     
@@ -661,7 +646,6 @@ server <- function(input, output, session) {
     best_strat  <- strats[which.max(final_banks)]
     worst_strat <- strats[which.min(final_banks)]
     
-    # Bankruptcy check
     bankrupt_info <- sapply(strats, function(s) {
       idx <- which(res[[s]]$bank <= 0)[1]
       if (!is.na(idx)) idx - 1 else NA
@@ -692,7 +676,6 @@ server <- function(input, output, session) {
     )
   })
   
-  # ── BANKROLL PLOT ──
   output$plot_bankroll <- renderPlot({
     res <- sim_results()
     strats <- names(res)
@@ -717,8 +700,7 @@ server <- function(input, output, session) {
       casino_theme()
   }, bg = "#0d1117")
   
-  # ── PROFIT DISTRIBUTION ──
-  output$plot_dist <- renderPlot({
+                             output$plot_dist <- renderPlot({
     res <- sim_results()
     strats <- names(res)
     
@@ -770,7 +752,6 @@ server <- function(input, output, session) {
       casino_theme()
   }, bg = "#0d1117")
   
-  # ── SUMMARY TABLE ──
   output$summary_table <- renderUI({
     res <- sim_results()
     strats <- names(res)
@@ -820,7 +801,6 @@ server <- function(input, output, session) {
     )
   })
   
-  # ── CASINO OPTIMIZACIJA ──
   output$plot_casino <- renderPlot({
     req(input$run_btn)
     set.seed(99)
